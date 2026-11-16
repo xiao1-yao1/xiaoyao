@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>星野防线 · 原创塔防</title>
+  <style>
+    :root {
+      --ink: #20394a;
+      --muted: #68808d;
+      --cream: #fffaf0;
+      --green: #2e7b59;
+      --gold: #f0b84c;
+      --red: #d65b52;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 18px;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 15% 15%, #e8f4dc 0, transparent 30%),
+        linear-gradient(135deg, #d9eee1, #cce4e8);
+      font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+
+    .app {
+      width: min(100%, 980px);
+      margin: 0 auto;
+    }
+
+    header, .toolbar, .game-shell {
+      border: 2px solid rgba(32, 57, 74, .12);
+      border-radius: 18px;
+      background: rgba(255, 250, 240, .95);
+      box-shadow: 0 8px 24px rgba(32, 57, 74, .1);
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 18px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .brand {
+      font-weight: 900;
+      font-size: 19px;
+      letter-spacing: .04em;
+    }
+
+    .stats {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .stat {
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: #edf4e9;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .game-shell {
+      position: relative;
+      overflow: hidden;
+      padding: 10px;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 12px;
+      background: #e7f0d7;
+      cursor: crosshair;
+      touch-action: manipulation;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      flex-wrap: wrap;
+      padding: 12px;
+      margin-top: 12px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 11px;
+      padding: 10px 13px;
+      color: var(--ink);
+      background: #eaf0e8;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+      transition: transform .12s, filter .12s, background .12s;
+    }
+
+    button:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.03); }
+    button:disabled { opacity: .48; cursor: not-allowed; }
+    button.selected { outline: 3px solid var(--gold); background: #fff2c9; }
+    button.primary { color: white; background: var(--green); }
+    button.danger { color: white; background: var(--red); }
+    button.small { padding: 7px 10px; font-size: 13px; }
+
+    .tower-button { min-width: 135px; text-align: left; }
+    .tower-button span { display: block; font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+    .spacer { flex: 1; }
+
+    .hint {
+      width: 100%;
+      min-height: 20px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 10px;
+      z-index: 3;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      border-radius: 12px;
+      background: rgba(24, 45, 54, .58);
+    }
+
+    .overlay.hidden { display: none; }
+
+    .dialog {
+      width: min(100%, 460px);
+      padding: 22px;
+      border-radius: 18px;
+      background: var(--cream);
+      box-shadow: 0 15px 40px rgba(0, 0, 0, .22);
+      text-align: center;
+    }
+
+    .dialog h2 { margin: 0 0 8px; }
+    .dialog p { color: var(--muted); line-height: 1.6; }
+
+    .level-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
+      gap: 9px;
+      margin-top: 16px;
+    }
+
+    .level-card { padding: 14px 8px; }
+    .level-card strong, .level-card span { display: block; }
+    .level-card span { margin-top: 4px; color: var(--muted); font-size: 12px; }
+
+    .dialog-actions {
+      display: flex;
+      justify-content: center;
+      gap: 9px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+
+    @media (max-width: 600px) {
+      body { padding: 8px; }
+      header { padding: 10px; }
+      .brand { font-size: 16px; }
+      .stat { padding: 6px 9px; font-size: 13px; }
+      .toolbar { padding: 9px; }
+      .tower-button { min-width: calc(50% - 6px); flex: 1; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div class="brand">✦ 星野防线</div>
+      <div class="stats">
+        <div class="stat" id="levelLabel">关卡：—</div>
+        <div class="stat" id="healthLabel">基地：—</div>
+        <div class="stat" id="goldLabel">金币：—</div>
+        <div class="stat" id="waveLabel">波次：—</div>
+      </div>
+    </header>
+
+    <section class="game-shell">
+      <canvas id="game" width="900" height="560" aria-label="塔防游戏地图"></canvas>
+
+      <div class="overlay" id="overlay">
+        <div class="dialog" id="dialog"></div>
+      </div>
+    </section>
+
+    <section class="toolbar">
+      <button class="tower-button" data-tower="arrow">
+        🏹 轻弩塔 <span>单体远程 · 70 金币</span>
+      </button>
+      <button class="tower-button" data-tower="cannon">
+        💥 炮击塔 <span>范围伤害 · 105 金币</span>
+      </button>
+      <button class="tower-button" data-tower="slow">
+        ❄️ 凝霜塔 <span>减速控制 · 85 金币</span>
+      </button>
+      <div class="spacer"></div>
+      <button class="primary" id="waveButton">开始下一波</button>
+      <button id="levelButton">关卡选择</button>
+      <div class="hint" id="hint">先选择一座炮塔，再点击地图上的空地建造。</div>
+    </section>
+  </main>
+
+  <script>
+    "use strict";
+
+    // ============================================================
+    // 美术素材替换区
+    // 将对应 value 改成图片相对路径即可，例如 "./images/arrow-tower.png"。
+    // 留空时使用下方 Canvas 原创占位绘制。图片建议使用透明背景 PNG。
+    // ============================================================
+    const ASSET_PATHS = {
+      towerArrow: "",   // 轻弩塔图片
+      towerCannon: "",  // 炮击塔图片
+      towerSlow: "",    // 凝霜塔图片
+      enemyScout: "",   // 快速怪物图片
+      enemyBrute: "",   // 重型怪物图片
+      enemyNormal: "",  // 普通怪物图片
+      base: ""          // 我方基地图片
+    };
+
+    const assets = {};
+    for (const [key, path] of Object.entries(ASSET_PATHS)) {
+      if (!path) continue;
+      const image = new Image();
+      image.src = path;
+      assets[key] = image;
+    }
+
+    // ============================================================
+    // 游戏数值区：可在这里调整价格、伤害、射程、攻击间隔和敌人属性。
+    // ============================================================
+    const TOWER_TYPES = {
+      arrow: {
+        name: "轻弩塔", cost: 70, damage: 22, range: 145, cooldown: 0.72,
+        color: "#b96843", asset: "towerArrow"
+      },
+      cannon: {
+        name: "炮击塔", cost: 105, damage: 34, range: 126, cooldown: 1.45,
+        splash: 57, color: "#657d91", asset: "towerCannon"
+      },
+      slow: {
+        name: "凝霜塔", cost: 85, damage: 8, range: 132, cooldown: 0.9,
+        slowFactor: 0.48, slowDuration: 1.6, color: "#58aabe", asset: "towerSlow"
+      }
+    };
+
+    const ENEMY_TYPES = {
+      normal: { name: "巡游者", hp: 72, speed: 38, reward: 12, radius: 15, color: "#d77d59", asset: "enemyNormal" },
+      scout:  { name: "疾行者", hp: 43, speed: 62, reward: 10, radius: 12, color: "#e5b34d", asset: "enemyScout" },
+      brute:  { name: "重甲兽", hp: 165, speed: 25, reward: 22, radius: 19, color: "#806a9d", asset: "enemyBrute" }
+    };
+
+    const CELL = 60;
+    const COLS = 15;
+    const ROWS = 9;
+    const MAP_X = 0;
+    const MAP_Y = 10;
+
+    // path 是格子坐标。怪物从路径点中心依次移动，路径格不可建塔。
+    const LEVELS = [
+      {
+        name: "晨雾草原",
+        path: [[0, 4], [3, 4], [3, 2], [7, 2], [7, 6], [11, 6], [11, 3], [14, 3]],
+        waves: [
+          ["normal", "normal", "scout", "normal"],
+          ["scout", "normal", "normal", "brute"],
+          ["normal", "scout", "brute", "normal", "normal"]
+        ]
+      },
+      {
+        name: "弯月峡谷",
+        path: [[0, 1], [4, 1], [4, 5], [2, 5], [2, 7], [9, 7], [9, 3], [14, 3]],
+        waves: [
+          ["scout", "normal", "scout", "normal"],
+          ["normal", "brute", "scout", "normal", "scout"],
+          ["brute", "normal", "normal", "scout", "brute"]
+        ]
+      },
+      {
+        name: "暮色高地",
+        path: [[0, 7], [3, 7], [3, 3], [6, 3], [6, 6], [10, 6], [10, 1], [14, 1]],
+        waves: [
+          ["normal", "scout", "normal", "brute"],
+          ["scout", "scout", "brute", "normal", "normal"],
+          ["brute", "normal", "scout", "brute", "normal", "scout"]
+        ]
+      }
+    ];
+
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const overlay = document.getElementById("overlay");
+    const dialog = document.getElementById("dialog");
+
+    const ui = {
+      level: document.getElementById("levelLabel"),
+      health: document.getElementById("healthLabel"),
+      gold: document.getElementById("goldLabel"),
+      wave: document.getElementById("waveLabel"),
+      hint: document.getElementById("hint"),
+      waveButton: document.getElementById("waveButton")
+    };
+
+    let selectedLevel = 0;
+    let selectedTowerType = null;
+    let selectedTower = null;
+    let game = null;
+    let lastFrame = 0;
+    let waveSpawnTimer = 0;
+    let flashTimer = 0;
+
+    function cellCenter(cell) {
+      return {
+        x: MAP_X + cell[0] * CELL + CELL / 2,
+        y: MAP_Y + cell[1] * CELL + CELL / 2
+      };
+    }
+
+    function pathCellSet(level) {
+      return new Set(level.path.map(([x, y]) => `${x},${y}`));
+    }
+
+    function makeGame(levelIndex) {
+      selectedLevel = levelIndex;
+      const level = LEVELS[levelIndex];
+      game = {
+        level,
+        health: 10,
+        gold: 240,
+        towers: [],
+        enemies: [],
+        projectiles: [],
+        waveIndex: 0,
+        waveQueue: [],
+        spawning: false,
+        betweenWaves: false,
+        countdown: 0,
+        state: "playing",
+        pathCells: pathCellSet(level),
+        effects: []
+      };
+      selectedTower = null;
+      selectedTowerType = null;
+      setHint("选择炮塔，再点击路径以外的空地建造。");
+      overlay.classList.add("hidden");
+      updateUI();
+    }
+
+    function showLevelPicker() {
+      const unlocked = Math.max(0, Math.min(
+        LEVELS.length - 1,
+        Number(localStorage.getItem("starfieldUnlocked") || 0)
+      ));
+      const cards = LEVELS.map((level, index) => {
+        const disabled = index > unlocked;
+        return `<button class="level-card ${disabled ? "" : "primary"}" data-level="${index}" ${disabled ? "disabled" : ""}>
+          <strong>${index + 1}. ${level.name}</strong>
+          <span>${disabled ? "尚未解锁" : `${level.waves.length} 个波次 · 点击进入`}</span>
+        </button>`;
+      }).join("");
+
+      dialog.innerHTML = `
+        <h2>选择关卡</h2>
+        <p>守住基地，完成全部波次即可解锁下一片区域。</p>
+        <div class="level-list">${cards}</div>
+      `;
+      overlay.classList.remove("hidden");
+      dialog.querySelectorAll("[data-level]").forEach(button => {
+        button.addEventListener("click", () => makeGame(Number(button.dataset.level)));
+      });
+    }
+
+    function showResult(won) {
+      if (!game) return;
+      game.state = won ? "won" : "lost";
+      if (won) {
+        const nextUnlocked = Math.min(LEVELS.length - 1, selectedLevel + 1);
+        const previous = Number(localStorage.getItem("starfieldUnlocked") || 0);
+        localStorage.setItem("starfieldUnlocked", String(Math.max(previous, nextUnlocked)));
+      }
+
+      dialog.innerHTML = `
+        <h2>${won ? "关卡完成！" : "基地失守"}</h2>
+        <p>${won
+          ? `你成功守住了「${game.level.name}」。`
+          : "基地耐久已耗尽。调整布防后可以再试一次。"
+        }</p>
+        <div class="dialog-actions">
+          <button class="primary" id="retryButton">${won ? "再玩一次" : "重新挑战"}</button>
+          <button id="resultLevelsButton">返回选关</button>
+        </div>
+      `;
+      overlay.classList.remove("hidden");
+      document.getElementById("retryButton").onclick = () => makeGame(selectedLevel);
+      document.getElementById("resultLevelsButton").onclick = showLevelPicker;
+      updateUI();
+    }
+
+    function setHint(text) {
+      ui.hint.textContent = text;
+    }
+
+    function updateUI() {
+      if (!game) {
+        ui.level.textContent = "关卡：—";
+        ui.health.textContent = "基地：—";
+        ui.gold.textContent = "金币：—";
+        ui.wave.textContent = "波次：—";
+        ui.waveButton.disabled = true;
+        return;
+      }
+      ui.level.textContent = `关卡 ${selectedLevel + 1}：${game.level.name}`;
+      ui.health.textContent = `基地：${game.health} ♥`;
+      ui.gold.textContent = `金币：${game.gold} ◆`;
+      const completed = game.waveIndex >= game.level.waves.length && !game.spawning && game.enemies.length === 0;
+      ui.wave.textContent = completed
+        ? `波次：${game.level.waves.length}/${game.level.waves.length}`
+        : `波次：${Math.min(game.waveIndex + 1, game.level.waves.length)}/${game.level.waves.length}`;
+
+      ui.waveButton.disabled = game.state !== "playing" || game.spawning ||
+        game.enemies.length > 0 || game.waveIndex >= game.level.waves.length;
+      ui.waveButton.textContent = game.betweenWaves && game.countdown > 0
+        ? `立即开始下一波 (${Math.ceil(game.countdown)}s)`
+        : "开始下一波";
+    }
+
+    function cellFromPointer(event) {
+      const rect = canvas.getBoundingClientRect();
+      const x = (event.clientX - rect.left) * canvas.width / rect.width;
+      const y = (event.clientY - rect.top) * canvas.height / rect.height;
+      return {
+        x: Math.floor((x - MAP_X) / CELL),
+        y: Math.floor((y - MAP_Y) / CELL),
+        px: x, py: y
+      };
+    }
+
+    canvas.addEventListener("click", event => {
+      if (!game || game.state !== "playing" || overlay.classList.contains("hidden") === false) return;
+      const cell = cellFromPointer(event);
+      if (cell.x < 0 || cell.x >= COLS || cell.y < 0 || cell.y >= ROWS) return;
+      const existing = game.towers.find(t => t.x === cell.x && t.y === cell.y);
+
+      if (existing) {
+        selectedTower = existing;
+        selectedTowerType = null;
+        setHint(`${TOWER_TYPES[existing.type].name} · 等级 ${existing.level}。可升级或出售。`);
+        renderToolbarTowerMenu();
+        return;
+      }
+
+      if (!selectedTowerType) {
+        selectedTower = null;
+        renderToolbarTowerMenu();
+        setHint("先在下方选择炮塔，再点击空地建造。");
+        return;
+      }
+
+      const key = `${cell.x},${cell.y}`;
+      if (game.pathCells.has(key)) {
+        setHint("路径上不能建造炮塔，请选择路径外的空地。");
+        return;
+      }
+
+      const type = TOWER_TYPES[selectedTowerType];
+      if (game.gold < type.cost) {
+        setHint("金币不足，击败怪物可以获得金币。");
+        return;
+      }
+
+      game.gold -= type.cost;
+      game.towers.push({ x: cell.x, y: cell.y, type: selectedTowerType, level: 1, cooldown: 0 });
+      selectedTower = null;
+      setHint(`${type.name}建造完成。`);
+      updateUI();
+    });
+
+    document.querySelectorAll(".tower-button").forEach(button => {
+      button.addEventListener("click", () => {
+        if (!game || game.state !== "playing") return;
+        selectedTowerType = button.dataset.tower;
+        selectedTower = null;
+        renderToolbarTowerMenu();
+        document.querySelectorAll(".tower-button").forEach(item => item.classList.toggle("selected", item === button));
+        setHint(`已选择${TOWER_TYPES[selectedTowerType].name}，点击路径外空地建造。`);
+      });
+    });
+
+    function renderToolbarTowerMenu() {
+      document.querySelectorAll(".tower-button").forEach(button => {
+        button.classList.toggle("selected", button.dataset.tower === selectedTowerType);
+      });
+
+      const old = document.getElementById("towerActionButtons");
+      if (old) old.remove();
+      if (!selectedTower || !game) return;
+
+      const actions = document.createElement("div");
+      actions.id = "towerActionButtons";
+      actions.style.display = "flex";
+      actions.style.gap = "8px";
+      actions.style.marginLeft = "auto";
+
+      const upgradeCost = upgradePrice(selectedTower);
+      const upgrade = document.createElement("button");
+      upgrade.className = "small primary";
+      upgrade.textContent = `升级 · ${upgradeCost} 金币`;
+      upgrade.disabled = selectedTower.level >= 3 || game.gold < upgradeCost;
+      upgrade.onclick = () => {
+        if (selectedTower.level >= 3 || game.gold < upgradeCost) return;
+        game.gold -= upgradeCost;
+        selectedTower.level++;
+        updateUI();
+        setHint(`炮塔已升级至 ${selectedTower.level} 级。`);
+        renderToolbarTowerMenu();
+      };
+
+      const sell = document.createElement("button");
+      sell.className = "small danger";
+      sell.textContent = `出售 · ${sellPrice(selectedTower)} 金币`;
+      sell.onclick = () => {
+        game.gold += sellPrice(selectedTower);
+        game.towers = game.towers.filter(tower => tower !== selectedTower);
+        selectedTower = null;
+        renderToolbarTowerMenu();
+        updateUI();
+        setHint("炮塔已出售。");
+      };
+
+      actions.append(upgrade, sell);
+      document.querySelector(".toolbar").insertBefore(actions, ui.hint);
+    }
+
+    function upgradePrice(tower) {
+      return Math.round(TOWER_TYPES[tower.type].cost * (0.72 + tower.level * 0.55));
+    }
+
+    function sellPrice(tower) {
+      return Math.floor(TOWER_TYPES[tower.type].cost * (0.55 + (tower.level - 1) * 0.3));
+    }
+
+    document.getElementById("waveButton").addEventListener("click", () => {
+      if (!game || game.state !== "playing") return;
+      startWave();
+    });
+
+    document.getElementById("levelButton").addEventListener("click", showLevelPicker);
+
+    function startWave() {
+      if (!game || game.state !== "playing" || game.spawning || game.enemies.length > 0) return;
+      if (game.waveIndex >= game.level.waves.length) return;
+      game.waveQueue = game.level.waves[game.waveIndex].slice();
+      game.waveIndex++;
+      game.spawning = true;
+      game.betweenWaves = false;
+      game.countdown = 0;
+      waveSpawnTimer = 0.25;
+      setHint(`第 ${game.waveIndex} 波来袭！`);
+      updateUI();
+    }
+
+    function spawnEnemy(kind) {
+      const data = ENEMY_TYPES[kind];
+      const first = cellCenter(game.level.path[0]);
+      game.enemies.push({
+        kind,
+        x: first.x, y: first.y,
+        hp: data.hp + (selectedLevel * 12) + (game.waveIndex - 1) * 7,
+        maxHp: data.hp + (selectedLevel * 12) + (game.waveIndex - 1) * 7,
+        speed: data.speed,
+        reward: data.reward,
+        radius: data.radius,
+        pathIndex: 0,
+        slowTimer: 0,
+        slowFactor: 1,
+        dead: false
+      });
+    }
+
+    function update(dt) {
+      if (!game || game.state !== "playing") return;
+
+      if (game.spawning) {
+        waveSpawnTimer -= dt;
+        if (waveSpawnTimer <= 0) {
+          if (game.waveQueue.length) {
+            spawnEnemy(game.waveQueue.shift());
+            waveSpawnTimer = 0.82;
+          } else {
+            game.spawning = false;
+          }
+        }
+      }
+
+      if (game.betweenWaves && game.enemies.length === 0) {
+        game.countdown -= dt;
+        if (game.countdown <= 0 && game.waveIndex < game.level.waves.length) startWave();
+      }
+
+      for (const enemy of game.enemies) {
+        if (enemy.dead) continue;
+        if (enemy.slowTimer > 0) {
+          enemy.slowTimer -= dt;
+          if (enemy.slowTimer <= 0) enemy.slowFactor = 1;
+        }
+
+        const nextCell = game.level.path[enemy.pathIndex + 1];
+        if (!nextCell) {
+          enemy.dead = true;
+          game.health--;
+          game.effects.push({ x: enemy.x, y: enemy.y, text: "−1", color: "#d65b52", life: .8 });
+          if (game.health <= 0) {
+            game.health = 0;
+            showResult(false);
+          }
+          continue;
+        }
+
+        const target = cellCenter(nextCell);
+        const dx = target.x - enemy.x;
+        const dy = target.y - enemy.y;
+        const distance = Math.hypot(dx, dy);
+        const step = enemy.speed * enemy.slowFactor * dt;
+
+        if (distance <= step) {
+          enemy.x = target.x;
+          enemy.y = target.y;
+          enemy.pathIndex++;
+        } else {
+          enemy.x += dx / distance * step;
+          enemy.y += dy / distance * step;
+        }
+      }
+
+      game.enemies = game.enemies.filter(enemy => !enemy.dead);
+
+      for (const tower of game.towers) {
+        tower.cooldown -= dt;
+        if (tower.cooldown > 0) continue;
+
+        const stats = towerStats(tower);
+        const center = cellCenter([tower.x, tower.y]);
+        const target = game.enemies.find(enemy =>
+          Math.hypot(enemy.x - center.x, enemy.y - center.y) <= stats.range
+        );
+
+        if (!target) continue;
+        tower.cooldown = stats.cooldown;
+
+        if (tower.type === "cannon") {
+          for (const enemy of game.enemies) {
+            if (Math.hypot(enemy.x - target.x, enemy.y - target.y) <= stats.splash) {
+              damageEnemy(enemy, stats.damage);
+            }
+          }
+          game.effects.push({ x: target.x, y: target.y, color: "#f0a94c", life: .35, radius: stats.splash });
+        } else {
+          damageEnemy(target, stats.damage);
+          if (tower.type === "slow") {
+            target.slowTimer = stats.slowDuration;
+            target.slowFactor = stats.slowFactor;
+          }
+          game.projectiles.push({ x: center.x, y: center.y, tx: target.x, ty: target.y, life: .16, color: stats.color });
+        }
+      }
+
+      game.projectiles = game.projectiles.filter(projectile => (projectile.life -= dt) > 0);
+      game.effects = game.effects.filter(effect => (effect.life -= dt) > 0);
+
+      if (!game.spawning && game.enemies.length === 0 && game.waveIndex > 0) {
+        if (game.waveIndex >= game.level.waves.length) {
+          showResult(true);
+        } else if (!game.betweenWaves) {
+          game.betweenWaves = true;
+          game.countdown = 8;
+          setHint("本波已清除。可立即开启下一波，或等待倒计时结束。");
+        }
+      }
+
+      if (flashTimer > 0) flashTimer -= dt;
+      updateUI();
+    }
+
+    function towerStats(tower) {
+      const base = TOWER_TYPES[tower.type];
+      const level = tower.level;
+      return {
+        range: base.range + (level - 1) * 12,
+        damage: base.damage * (1 + (level - 1) * 0.58),
+        cooldown: Math.max(.32, base.cooldown * (1 - (level - 1) * .12)),
+        splash: (base.splash || 0) + (level - 1) * 9,
+        slowFactor: base.slowFactor,
+        slowDuration: base.slowDuration
+      };
+    }
+
+    function damageEnemy(enemy, damage) {
+      if (enemy.dead) return;
+      enemy.hp -= damage;
+      if (enemy.hp <= 0) {
+        enemy.dead = true;
+        game.gold += enemy.reward;
+        game.effects.push({ x: enemy.x, y: enemy.y, text: `+${enemy.reward}`, color: "#39845a", life: .8 });
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawMap();
+      if (!game) return;
+
+      for (const tower of game.towers) drawTower(tower);
+      for (const enemy of game.enemies) drawEnemy(enemy);
+      for (const projectile of game.projectiles) {
+        ctx.globalAlpha = Math.max(0, projectile.life / .16);
+        ctx.strokeStyle = projectile.color;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(projectile.x, projectile.y);
+        ctx.lineTo(projectile.tx, projectile.ty);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      for (const effect of game.effects) drawEffect(effect);
+
+      if (selectedTower) {
+        const center = cellCenter([selectedTower.x, selectedTower.y]);
+        ctx.strokeStyle = "rgba(50, 130, 170, .28)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(center.x, center.y, towerStats(selectedTower).range, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    function drawMap() {
+      ctx.fillStyle = "#dcebc8";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // 草地底纹格子
+      for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) {
+          const left = MAP_X + x * CELL;
+          const top = MAP_Y + y * CELL;
+          ctx.fillStyle = (x + y) % 2 ? "#e4efcf" : "#dfebc9";
+          ctx.fillRect(left, top, CELL, CELL);
+          ctx.strokeStyle = "rgba(77, 112, 78, .08)";
+          ctx.strokeRect(left, top, CELL, CELL);
+        }
+      }
+
+      if (!game) {
+        ctx.fillStyle = "#405c53";
+        ctx.font = "bold 28px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText("选择一片区域，开始守护星野", canvas.width / 2, canvas.height / 2);
+        return;
+      }
+
+      const points = game.level.path.map(cellCenter);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = "#c8a77a";
+      ctx.lineWidth = 42;
+      ctx.beginPath();
+      points.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
+      ctx.stroke();
+
+      ctx.strokeStyle = "#ead8ad";
+      ctx.lineWidth = 31;
+      ctx.beginPath();
+      points.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
+      ctx.stroke();
+
+      // 起点、终点（基地）标识
+      drawMarker(points[0].x, points[0].y, "入口", "#6a9c74");
+      const end = points[points.length - 1];
+      drawBase(end.x, end.y);
+    }
+
+    function drawMarker(x, y, label, color) {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, 18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 11px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillText(label, x, y + 4);
+    }
+
+    function drawBase(x, y) {
+      const image = assets.base;
+      if (image && image.complete && image.naturalWidth) {
+        ctx.drawImage(image, x - 25, y - 25, 50, 50);
+        return;
+      }
+      ctx.fillStyle = "#4d9272";
+      ctx.beginPath();
+      ctx.arc(x, y, 22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#f5e6a8";
+      ctx.beginPath();
+      ctx.arc(x, y, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#264b45";
+      ctx.font = "bold 10px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillText("基地", x, y + 4);
+    }
+
+    function drawTower(tower) {
+      const center = cellCenter([tower.x, tower.y]);
+      const type = TOWER_TYPES[tower.type];
+      const image = assets[type.asset];
+
+      if (image && image.complete && image.naturalWidth) {
+        ctx.drawImage(image, center.x - 24, center.y - 24, 48, 48);
+      } else {
+        // 原创简易占位图形：底座 + 不同造型区分炮塔类型。
+        ctx.fillStyle = "#526454";
+        ctx.beginPath();
+        ctx.arc(center.x, center.y + 7, 21, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = type.color;
+        ctx.beginPath();
+        if (tower.type === "arrow") {
+          ctx.moveTo(center.x, center.y - 21);
+          ctx.lineTo(center.x + 17, center.y + 12);
+          ctx.lineTo(center.x - 17, center.y + 12);
+          ctx.closePath();
+        } else if (tower.type === "cannon") {
+          ctx.roundRect(center.x - 17, center.y - 17, 34, 34, 8);
+        } else {
+          ctx.arc(center.x, center.y, 17, 0, Math.PI * 2);
+        }
+        ctx.fill();
+
+        ctx.fillStyle = "#fff3d4";
+        ctx.beginPath();
+        ctx.arc(center.x, center.y - 3, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.fillStyle = "#fff";
+      ctx.strokeStyle = "rgba(32,57,74,.65)";
+      ctx.lineWidth = 2;
+      ctx.font = "bold 12px system-ui";
+      ctx.textAlign = "center";
+      ctx.strokeText(String(tower.level), center.x + 17, center.y - 17);
+      ctx.fillText(String(tower.level), center.x + 17, center.y - 17);
+    }
+
+    function drawEnemy(enemy) {
+      const data = ENEMY_TYPES[enemy.kind];
+      const image = assets[data.asset];
+      if (image && image.complete && image.naturalWidth) {
+        ctx.drawImage(image, enemy.x - enemy.radius, enemy.y - enemy.radius, enemy.radius * 2, enemy.radius * 2);
+      } else {
+        // 原创占位怪物：彩色圆形身体、眼睛与外轮廓。
+        ctx.fillStyle = enemy.slowTimer > 0 ? "#70c6d3" : data.color;
+        ctx.beginPath();
+        ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#624d43";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.fillStyle = "#fff";
+        ctx.beginPath();
+        ctx.arc(enemy.x - 4, enemy.y - 3, 4, 0, Math.PI * 2);
+        ctx.arc(enemy.x + 5, enemy.y - 3, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#263a42";
+        ctx.beginPath();
+        ctx.arc(enemy.x - 3, enemy.y - 3, 1.5, 0, Math.PI * 2);
+        ctx.arc(enemy.x + 6, enemy.y - 3, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      const barWidth = enemy.radius * 2.2;
+      const ratio = Math.max(0, enemy.hp / enemy.maxHp);
+      ctx.fillStyle = "#7d4545";
+      ctx.fillRect(enemy.x - barWidth / 2, enemy.y - enemy.radius - 9, barWidth, 4);
+      ctx.fillStyle = "#67a86b";
+      ctx.fillRect(enemy.x - barWidth / 2, enemy.y - enemy.radius - 9, barWidth * ratio, 4);
+    }
+
+    function drawEffect(effect) {
+      if (effect.radius) {
+        ctx.globalAlpha = Math.max(0, effect.life / .35) * .4;
+        ctx.fillStyle = effect.color;
+        ctx.beginPath();
+        ctx.arc(effect.x, effect.y, effect.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      if (effect.text) {
+        ctx.globalAlpha = Math.min(1, effect.life * 1.5);
+        ctx.fillStyle = effect.color;
+        ctx.font = "bold 16px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText(effect.text, effect.x, effect.y - 20 - (0.8 - effect.life) * 18);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    function frame(timestamp) {
+      const dt = Math.min(.05, (timestamp - (lastFrame || timestamp)) / 1000);
+      lastFrame = timestamp;
+      update(dt);
+      draw();
+      requestAnimationFrame(frame);
+    }
+
+    showLevelPicker();
+    updateUI();
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
